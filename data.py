@@ -13,18 +13,22 @@ class CharDataset(IterableDataset):
         # some HF boilerplate
         logging.set_verbosity(40)
         os.environ["TOKENIZERS_PARALLELISM"] = "TRUE"
+        # load the near-deduplicated BigCode corpus of permissively licensed code
         ds = load_dataset(
-            "oscar", "unshuffled_deduplicated_en", split="train", streaming=True
+            "bigcode/the-stack-dedup",
+            split="train",
+            streaming=True,          # keeps the 3 TB dataset on disk or S3
         )
         ds = ds.with_format("torch")
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        # a GPT-2-style byte-level tokenizer trained on code
+        self.tokenizer = AutoTokenizer.from_pretrained("bigcode/santacoder")
         self.block_size = block_size
 
         # add one more token so that we can shift the labels (labels are the next word)
         block_size = block_size + 1
 
         def convert_to_features(examples):
-            examples = self.tokenizer(examples["text"])
+            examples = self.tokenizer(examples["content"])
             # Concatenate all texts.
             concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
             total_length = len(concatenated_examples[list(examples.keys())[0]])
@@ -38,7 +42,12 @@ class CharDataset(IterableDataset):
             }
             return result
 
-        ds = ds.map(convert_to_features, remove_columns=["text", "id"], batched=True)
+        # after tokenisation we only need input_ids
+        ds = ds.map(
+            convert_to_features,
+            remove_columns=["content"],   # drop original source code
+            batched=True,
+        )
 
         self.ds = ds
 
