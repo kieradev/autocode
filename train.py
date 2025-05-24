@@ -40,7 +40,7 @@ def main(
     local_rank: int = 0,
     precision: Union[str, int] = "bf16",
     log_dir: Optional[str] = None,
-    save_every_n_steps: Optional[int] = None,
+    save_every_n_steps: Optional[int] = 500,
     save_dir: str = "checkpoints/",
 ):
     seed_everything(42 + local_rank)
