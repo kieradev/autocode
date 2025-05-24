@@ -1,3 +1,4 @@
+import signal
 import argparse
 import math
 import os
@@ -108,6 +109,22 @@ def main(
         lr_scheduler=scheduler,
     )
 
+    # ---------- OPTIONAL AUTO-RESUME ----------
+    if os.path.isdir(save_dir) and os.listdir(save_dir):
+        tag, _ = deepspeed_engine.load_checkpoint(save_dir)
+        start_step = int(tag.lstrip("global_step"))
+    else:
+        start_step = 0
+
+    # graceful shutdown (pre-emption or CTRL-C)
+    def handler(sig, frame):
+        if deepspeed_engine.is_gradient_accumulation_boundary():
+            deepspeed_engine.save_checkpoint(save_dir, tag=f"global_step{metrics.iteration}")
+        deepspeed_engine.logger.info(f"Exiting via signal {sig}")
+        exit(0)
+    signal.signal(signal.SIGTERM, handler)
+    signal.signal(signal.SIGINT, handler)
+
     train_loader = iter(train_loader)
     metrics = Metrics(
         log_dir=log_dir,
@@ -121,7 +138,7 @@ def main(
         num_devices=num_devices,
     )
 
-    for x in range(num_iterations):
+    for x in range(start_step, num_iterations):
         batch = next(train_loader)
         src, targets = batch
         batch = (
